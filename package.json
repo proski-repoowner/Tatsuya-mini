@@ -4,7 +4,7 @@
   "description": "DILSHAN-MD",
   "main": "index.js",
   "scripts": {
-    "start": "pm2 start index.js --deep-monitoring --attach --name dilshan-md",
+    "start": "node index.js"
     "stop": "pm2 stop dilshan-md",
     "restart": "pm2 restart dilshan-md"
   },
