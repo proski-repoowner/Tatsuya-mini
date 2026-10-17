@@ -1,0 +1,49 @@
+name: Node.js CI
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    env:
+      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+
+      - name: Check Node and npm
+        run: |
+          node -v
+          npm -v
+
+      - name: Install dependencies
+        run: |
+          npm install --legacy-peer-deps --ignore-scripts
+
+      - name: Check SESSION_ID
+        env:
+          SESSION_ID: ${{ secrets.SESSION_ID }}
+        run: |
+          if [ -z "$SESSION_ID" ]; then
+            echo "❌ SESSION_ID is missing"
+            exit 1
+          fi
+          echo "✅ SESSION_ID is set"
+
+      - name: Start NEXA-MD
+        env:
+          SESSION_ID: ${{ secrets.SESSION_ID }}
+        run: |
+          npm start
