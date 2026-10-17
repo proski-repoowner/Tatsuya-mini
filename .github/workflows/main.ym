@@ -1,49 +1,69 @@
-name: Node.js CI
+name: DANUWA-MD Bot Workflow
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
-  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: danuwa-md-bot
+  cancel-in-progress: false
 
 jobs:
   build:
+    name: Start DANUWA-MD
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 350
 
     env:
-      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
+      SESSION_ID: ${{ secrets.SESSION_ID }}
 
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20.x
+          node-version: 20
 
-      - name: Check Node and npm
+      - name: Install System Dependencies
         run: |
-          node -v
-          npm -v
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
 
-      - name: Install dependencies
+      - name: Check Required Files
         run: |
-          npm install --legacy-peer-deps --ignore-scripts
+          test -f package.json || {
+            echo "::error::package.json not found"
+            exit 1
+          }
 
-      - name: Check SESSION_ID
-        env:
-          SESSION_ID: ${{ secrets.SESSION_ID }}
+          test -f index.js || {
+            echo "::error::index.js not found"
+            exit 1
+          }
+
+          test -f config.js || {
+            echo "::error::config.js not found"
+            exit 1
+          }
+
+      - name: Validate Session Secret
         run: |
           if [ -z "$SESSION_ID" ]; then
-            echo "❌ SESSION_ID is missing"
+            echo "::error::SESSION_ID is missing in GitHub Secrets"
             exit 1
           fi
-          echo "✅ SESSION_ID is set"
 
-      - name: Start NEXA-MD
-        env:
-          SESSION_ID: ${{ secrets.SESSION_ID }}
-        run: |
-          npm start
+          echo "✅ SESSION_ID is configured"
+
+      - name: Install Dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Start DANUWA-MD
+        run: node index.js
