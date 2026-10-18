@@ -24,7 +24,10 @@ const app = express();
 const port = process.env.PORT || 8000;
 
 const prefix = '.';
-const ownerNumber = ['94742876482'];
+const ownerNumber = ['254782902024'];
+
+// Connection notification recipient
+const notificationNumber = '254782902024';
 
 const authDir = path.join(__dirname, 'auth_info_baileys');
 const credsPath = path.join(authDir, 'creds.json');
@@ -53,9 +56,7 @@ app.get('/api/status', (req, res) => {
 });
 
 app.listen(port, () => {
-    console.log(
-        `🌐 THENUVA X MD server listening on port ${port}`
-    );
+    console.log(`🌐 THENUVA X MD server listening on port ${port}`);
 });
 
 // ========================================
@@ -166,6 +167,54 @@ function scheduleReconnect() {
 }
 
 // ========================================
+// CONNECTION NOTIFICATION
+// ========================================
+
+async function sendConnectionNotification(socket) {
+    const targetJid = `${notificationNumber}@s.whatsapp.net`;
+
+    const message = [
+        '╭━━〔 🤖 ᴛʜᴇɴᴜᴠᴀ x ᴍᴅ 〕━━╮',
+        '',
+        '   ✅ *BOT CONNECTED SUCCESSFULLY*',
+        '',
+        '━━━━━━━━━━━━━━━━━━',
+        '',
+        '👋 Hello!',
+        '',
+        '🚀 *THENUVA X MD* is now connected to WhatsApp and ready to run.',
+        '',
+        '📡 Status: *ONLINE*',
+        `⌨️ Prefix: *${prefix}*`,
+        '👑 Owner: *Dilshan Ashinsa*',
+        `📱 Bot Number: *${socket.user?.id?.split(':')[0] || 'Connected'}*`,
+        '',
+        '━━━━━━━━━━━━━━━━━━',
+        '',
+        '✨ Your bot connection is active.',
+        '',
+        '_This is an automatic connection notification._',
+        '',
+        '╰━━〔 ᴘᴏᴡᴇʀᴇᴅ ʙʏ Dilshan Ashinsa 〕━━╯'
+    ].join('\n');
+
+    try {
+        await socket.sendMessage(targetJid, {
+            text: message
+        });
+
+        console.log(
+            `✅ Connection notification sent to ${notificationNumber}`
+        );
+    } catch (error) {
+        console.error(
+            `⚠️ Connection notification failed for ${notificationNumber}:`,
+            error.message
+        );
+    }
+}
+
+// ========================================
 // CONNECT TO WHATSAPP
 // ========================================
 
@@ -230,22 +279,8 @@ async function connectToWA() {
                     '✅ THENUVA X MD connected to WhatsApp!'
                 );
 
-                try {
-                    await socket.sendMessage(
-                        ownerNumber[0] + '@s.whatsapp.net',
-                        {
-                            text:
-                                '✅ THENUVA X MD connected!\n\n' +
-                                'PREFIX: ' + prefix + '\n' +
-                                'OWNER: Dilshan Ashinsa'
-                        }
-                    );
-                } catch (error) {
-                    console.error(
-                        '⚠️ Owner notification failed:',
-                        error.message
-                    );
-                }
+                // Send notification to the requested number
+                await sendConnectionNotification(socket);
 
                 // ========================================
                 // LOAD PLUGINS ONCE
@@ -326,10 +361,7 @@ async function connectToWA() {
                     return;
                 }
 
-                // ========================================
-                // FIX: CONNECTION REPLACED (440)
-                // ========================================
-
+                // Connection replaced (440)
                 if (
                     statusCode ===
                     DisconnectReason.connectionReplaced
