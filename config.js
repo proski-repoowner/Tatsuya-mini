@@ -5,7 +5,6 @@ function convertToBool(text, fault = 'true') {
     return text === fault ? true : false;
 }
 module.exports = {
-SESSION_ID: 'THENUVA-XMD=https://mega.nz/file/pzQ3hQTK#BGRuWSE0cU5prIRtdou-nGqBgoZw_7MaRaJq5g-Pbx4',
+SESSION_ID: 'THENUVA-XMD=https://mega.nz/file/9v4RVJbD#Xqxn0rAP008PGc_lGC3lbSMYfftWzMfAFA8BFVAwuqw',
 BOT_OWNER: '94772194789',  // Replace with the owner's phone number
-
 };
