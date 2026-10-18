@@ -23,12 +23,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Validate Secrets
+      - name: Check Secrets
         env:
           WASENDER_API_KEY: ${{ secrets.WASENDER_API_KEY }}
           TEST_PHONE: ${{ secrets.TEST_PHONE }}
@@ -43,49 +38,45 @@ jobs:
             exit 1
           fi
 
-          echo "Required secrets are configured."
+          echo "Secrets are configured successfully."
 
-      - name: Send Test WhatsApp Message
+      - name: Test WasenderAPI
         uses: actions/github-script@v7
         env:
           WASENDER_API_KEY: ${{ secrets.WASENDER_API_KEY }}
           TEST_PHONE: ${{ secrets.TEST_PHONE }}
         with:
           script: |
-            const { WASENDER_API_KEY, TEST_PHONE } = process.env;
+            const token = process.env.WASENDER_API_KEY;
+            const phone = process.env.TEST_PHONE;
 
-            try {
-              const response = await fetch(
-                'https://www.wasenderapi.com/api/send-message',
-                {
-                  method: 'POST',
-                  headers: {
-                    Authorization: `Bearer ${WASENDER_API_KEY}`,
-                    'Content-Type': 'application/json',
-                    Accept: 'application/json'
-                  },
-                  body: JSON.stringify({
-                    to: TEST_PHONE,
-                    text: 'THENUVA X MD - WasenderAPI test message.'
-                  }),
-                  signal: AbortSignal.timeout(30000)
-                }
-              );
-
-              const body = await response.text();
-
-              console.log('HTTP status:', response.status);
-
-              if (!response.ok) {
-                core.setFailed(
-                  `WasenderAPI request failed (HTTP ${response.status}): ${body.slice(0, 1000)}`
-                );
-                return;
+            const response = await fetch(
+              'https://www.wasenderapi.com/api/send-message',
+              {
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  'Content-Type': 'application/json',
+                  Accept: 'application/json'
+                },
+                body: JSON.stringify({
+                  to: phone,
+                  text: 'THENUVA X MD - WasenderAPI test message.'
+                }),
+                signal: AbortSignal.timeout(30000)
               }
+            );
 
-              console.log('WasenderAPI accepted the request.');
-              console.log(body.slice(0, 1000));
+            const result = await response.text();
 
-            } catch (error) {
-              core.setFailed(`Request failed: ${error.message}`);
+            console.log('HTTP status:', response.status);
+
+            if (!response.ok) {
+              core.setFailed(
+                `WasenderAPI error (${response.status}): ${result.slice(0, 1000)}`
+              );
+              return;
             }
+
+            console.log('API accepted the request.');
+            console.log(result.slice(0, 1000));
