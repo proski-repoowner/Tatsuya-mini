@@ -1,4 +1,4 @@
-name: DANUWA-MD Bot Workflow
+name: THENUVA X MD - WasenderAPI
 
 on:
   workflow_dispatch:
@@ -10,17 +10,18 @@ permissions:
   contents: read
 
 concurrency:
-  group: danuwa-md-bot
+  group: thenuva-x-md
   cancel-in-progress: false
 
 jobs:
-  build:
-    name: Start DANUWA-MD
+  test-wasender:
+    name: Test WasenderAPI
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 5
 
     env:
-      SESSION_ID: ${{ secrets.SESSION_ID }}
+      WASENDER_API_KEY: ${{ secrets.WASENDER_API_KEY }}
+      TEST_PHONE: ${{ secrets.TEST_PHONE }}
 
     steps:
       - name: Checkout Repository
@@ -31,39 +32,56 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install System Dependencies
+      - name: Validate Secrets
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
-
-      - name: Check Required Files
-        run: |
-          test -f package.json || {
-            echo "::error::package.json not found"
-            exit 1
-          }
-
-          test -f index.js || {
-            echo "::error::index.js not found"
-            exit 1
-          }
-
-          test -f config.js || {
-            echo "::error::config.js not found"
-            exit 1
-          }
-
-      - name: Validate Session Secret
-        run: |
-          if [ -z "$SESSION_ID" ]; then
-            echo "::error::SESSION_ID is missing in GitHub Secrets"
+          if [ -z "$WASENDER_API_KEY" ]; then
+            echo "::error::WASENDER_API_KEY is missing"
             exit 1
           fi
 
-          echo "✅ SESSION_ID is configured"
+          if [ -z "$TEST_PHONE" ]; then
+            echo "::error::TEST_PHONE is missing"
+            exit 1
+          fi
 
-      - name: Install Dependencies
-        run: npm install --legacy-peer-deps
+          echo "Required secrets are configured."
 
-      - name: Start DANUWA-MD
-        run: node index.js
+      - name: Test WasenderAPI
+        run: |
+          node <<'NODE'
+          async function main() {
+            const response = await fetch(
+              'https://www.wasenderapi.com/api/send-message',
+              {
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${process.env.WASENDER_API_KEY}`,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                  to: process.env.TEST_PHONE,
+                  text: 'THENUVA X MD - WasenderAPI test message.'
+                }),
+                signal: AbortSignal.timeout(30000)
+              }
+            );
+
+            const body = await response.text();
+
+            console.log('HTTP status:', response.status);
+
+            if (!response.ok) {
+              console.error('WasenderAPI request failed.');
+              console.error(body.slice(0, 1000));
+              process.exit(1);
+            }
+
+            console.log('API accepted the request.');
+            console.log(body.slice(0, 1000));
+          }
+
+          main().catch(error => {
+            console.error('Request failed:', error.message);
+            process.exit(1);
+          });
+          NODE
