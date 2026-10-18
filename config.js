@@ -6,9 +6,9 @@ function convertToBool(text, fault = 'true') {
 }
 module.exports = {
 SESSION_ID: 'THENUVA-XMD=https://mega.nz/file/k2JgGZoD#Y1cmIPcsiujcbB8qWC7yC_jNM8HBqOAzHOp4qjjDPLM',
-ALIVE_IMG: process.env.ALIVE_IMG || "https://github.com/DANUWA-MD/DANUWA-MD/blob/main/images/DANUWA-MD.png?raw=true",
-ALIVE_MSG: process.env.ALIVE_MSG || "*Hello👋 DANUWA-MD Is Alive Now😍*",
-BOT_OWNER: '94776121326',  // Replace with the owner's phone number
+ALIVE_IMG: process.env.ALIVE_IMG || "",
+ALIVE_MSG: process.env.ALIVE_MSG || "",
+BOT_OWNER: '94772194789',  // Replace with the owner's phone number
 
 
 
