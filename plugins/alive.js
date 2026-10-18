@@ -1,48 +1,74 @@
-const { cmd, commands } = require('../command');
-const os = require("os");
+const { cmd } = require('../command');
+const os = require('os');
 const { runtime } = require('../lib/functions');
 
+const BOT_NAME = 'THENUVA X MD';
+const OWNER = 'Dilshan Ashinsa';
+const VERSION = '2.0.0';
+const PREFIX = '.';
+
+// Optional direct image URL.
+// Leave empty to send text only.
+const ALIVE_IMAGE = '';
+
 cmd({
-    pattern: "alive",
-    alias: ["status", "runtime", "uptime"],
-    desc: "Check uptime and system status",
-    category: "main",
-    react: "👨🏻‍💻",
+    pattern: 'alive',
+    alias: ['status', 'runtime', 'uptime'],
+    desc: 'Check bot uptime and system status',
+    category: 'main',
+    react: '⚡',
     filename: __filename
-},
-async (conn, mek, m, { from, quoted, body, isCmd, command, args, q, isGroup, sender, senderNumber, botNumber2, botNumber, pushname, isMe, isOwner, groupMetadata, groupName, participants, groupAdmins, isBotAdmins, isAdmins, reply }) => {
+}, async (conn, mek, m, { from, pushname, reply }) => {
     try {
-        // Generate system status message
-        const status = `┏━❮  NORMAL WHATSAPP BOT ❯━
-┃◈┃🤖 ʙᴏᴛ ɴᴀᴍᴇ : *normal whatsapp bot*
-┃◈┃🔖 ᴠᴇʀsɪᴏɴ : *1.0.0 beta*
-┃◈┃📟 ᴘʟᴀᴛғᴏʀᴍ : *replit*
-┃◈┃👨‍💻ᴏᴡɴᴇʀ: *Dilshan Ashinsa*
-┃◈┃📆 ʀᴜɴᴛɪᴍᴇ : ${runtime(process.uptime())} 
-┃◈┃📈ʀᴀᴍ ᴜsᴀɢᴇ: ${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)}MB / ${Math.round(require('os').totalmem / 1024 / 1024)}MB
-┃◈┗━━━━━━━━━━━━━━𖣔𖣔
-╰──────────────┈⊷
+        const memory = process.memoryUsage();
+        const usedMemory = (memory.rss / 1024 / 1024).toFixed(2);
+        const totalMemory = (os.totalmem() / 1024 / 1024).toFixed(0);
 
-> normal whatsapp bot`;
+        const status = [
+            '╭━━〔 ᴛʜᴇɴᴜᴠᴀ x ᴍᴅ 〕━━╮',
+            '',
+            `👋 Hello, ${pushname || 'User'}! ❤️`,
+            '',
+            '╭─〔 ʙᴏᴛ sᴛᴀᴛᴜs 〕',
+            '┃',
+            '┃ 🟢 Status : *ONLINE*',
+            `┃ 🤖 Bot : *${BOT_NAME}*`,
+            `┃ 🔖 Version : *${VERSION}*`,
+            '┃ 📟 Platform : *Node.js*',
+            `┃ ⏱️ Uptime : *${runtime(process.uptime())}*`,
+            `┃ 💾 RAM Usage : *${usedMemory} MB*`,
+            `┃ 🖥️ Total RAM : *${totalMemory} MB*`,
+            `┃ ⌨️ Prefix : *${PREFIX}*`,
+            `┃ 👑 Owner : *${OWNER}*`,
+            '┃',
+            '╰━━━━━━━━━━━━━━━━━━',
+            '',
+            '✨ *THENUVA X MD is running successfully!*',
+            '',
+            '> ᴛʜᴇɴᴜᴠᴀ x ᴍᴅ • ᴘᴏᴡᴇʀᴇᴅ ʙʏ Dilshan Ashinsa'
+        ].join('\n');
 
-        // Send the status message with an image
-        await conn.sendMessage(from, { 
-            image: { url: `` },  // Image URL
-            caption: status,
-            contextInfo: {
-                mentionedJid: [m.sender],
-                forwardingScore: 1,
-                isForwarded: true,
-                forwardedNewsletterMessageInfo: {
-                    newsletterJid: '6363837@newsletter',
-                    newsletterName: '❤️සුපිරි බොටා ඈ❤️',
-                    serverMessageId: 143
-                }
-            }
-        }, { quoted: mek });
+        if (ALIVE_IMAGE && /^https?:\/\//i.test(ALIVE_IMAGE)) {
+            await conn.sendMessage(
+                from,
+                {
+                    image: { url: ALIVE_IMAGE },
+                    caption: status
+                },
+                { quoted: mek }
+            );
+        } else {
+            await conn.sendMessage(
+                from,
+                { text: status },
+                { quoted: mek }
+            );
+        }
+    } catch (error) {
+        console.error('[ALIVE ERROR]', error.stack || error.message);
 
-    } catch (e) {
-        console.error("Error in alive command:", e);
-        reply(`An error occurred: ${e.message}`);
+        if (typeof reply === 'function') {
+            await reply('❌ Alive command failed. Check GitHub Actions logs.');
+        }
     }
 });
