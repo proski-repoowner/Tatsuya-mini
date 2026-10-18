@@ -24,7 +24,8 @@ const app = express();
 const port = process.env.PORT || 8000;
 
 const prefix = '.';
-const ownerNumber = ['94742876482'];
+const ownerNumber = ['254782902024'];
+const OWNER_JID = `${ownerNumber[0]}@s.whatsapp.net`;
 
 const authDir = path.join(__dirname, 'auth_info_baileys');
 const credsPath = path.join(authDir, 'creds.json');
@@ -35,6 +36,7 @@ let reconnectTimer = null;
 let reconnectAttempts = 0;
 let pluginsLoaded = false;
 let connectionStopped = false;
+let connectedNotificationSent = false;
 
 // ========================================
 // EXPRESS SERVER
@@ -57,6 +59,42 @@ app.listen(port, () => {
         `🌐 THENUVA X MD server listening on port ${port}`
     );
 });
+
+// ========================================
+// SEND OWNER CONNECTION MESSAGE
+// ========================================
+
+async function sendOwnerConnectedMessage(socket) {
+    const botNumber = socket.user?.id
+        ?.split(':')[0]
+        ?.split('@')[0];
+
+    const message =
+        '╭━━〔 *ᴛʜᴇɴᴜᴠᴀ x ᴍᴅ* 〕━━╮\n' +
+        '┃\n' +
+        '┃  ✅ *BOT CONNECTED SUCCESSFULLY!*\n' +
+        '┃\n' +
+        '┃  🤖 Status: Online\n' +
+        `┃  👑 Owner: Dilshan Ashinsa\n` +
+        `┃  🔹 Prefix: ${prefix}\n` +
+        `┃  📱 Bot Number: ${botNumber || 'Unknown'}\n` +
+        '┃\n' +
+        '╰━━━━━━━━━━━━━━━━━━╯\n\n' +
+        '🚀 Your WhatsApp bot is now ready to use!';
+
+    try {
+        await socket.sendMessage(OWNER_JID, {
+            text: message
+        });
+
+        console.log('✅ Owner connection message sent.');
+    } catch (error) {
+        console.error(
+            '❌ Could not send owner connection message:',
+            error.message
+        );
+    }
+}
 
 // ========================================
 // SESSION RESTORE FROM MEGA
@@ -133,7 +171,6 @@ async function ensureSessionFile() {
             '❌ SESSION RESTORE ERROR:',
             error.message
         );
-        console.error(error.stack || 'No stack trace available');
     }
 }
 
@@ -230,21 +267,10 @@ async function connectToWA() {
                     '✅ THENUVA X MD connected to WhatsApp!'
                 );
 
-                try {
-                    await socket.sendMessage(
-                        ownerNumber[0] + '@s.whatsapp.net',
-                        {
-                            text:
-                                '✅ THENUVA X MD connected!\n\n' +
-                                'PREFIX: ' + prefix + '\n' +
-                                'OWNER: Dilshan Ashinsa'
-                        }
-                    );
-                } catch (error) {
-                    console.error(
-                        '⚠️ Owner notification failed:',
-                        error.message
-                    );
+                // Send the notification only once per process
+                if (!connectedNotificationSent) {
+                    connectedNotificationSent = true;
+                    await sendOwnerConnectedMessage(socket);
                 }
 
                 // ========================================
@@ -279,7 +305,7 @@ async function connectToWA() {
                             } catch (error) {
                                 console.error(
                                     `❌ Plugin error (${plugin}):`,
-                                    error.stack || error.message
+                                    error.message
                                 );
                             }
                         }
@@ -308,7 +334,6 @@ async function connectToWA() {
                     }
                 );
 
-                // Logged out: requires a valid new session
                 if (
                     statusCode === DisconnectReason.loggedOut
                 ) {
@@ -326,10 +351,7 @@ async function connectToWA() {
                     return;
                 }
 
-                // ========================================
-                // FIX: CONNECTION REPLACED (440)
-                // ========================================
-
+                // Stop repeated reconnects on 440
                 if (
                     statusCode ===
                     DisconnectReason.connectionReplaced
@@ -344,23 +366,16 @@ async function connectToWA() {
                     console.error(
                         '❌ CONNECTION REPLACED (440).'
                     );
-
                     console.error(
-                        '⚠️ Automatic reconnect stopped to prevent a loop.'
+                        '⚠️ Automatic reconnect stopped.'
                     );
-
                     console.error(
-                        '👉 Stop any other bot instance using this WhatsApp session.'
-                    );
-
-                    console.error(
-                        '👉 If no other instance is running, check the session and Baileys version.'
+                        '👉 Check for another active bot using this session.'
                     );
 
                     return;
                 }
 
-                // Other connection failures: retry with backoff
                 scheduleReconnect();
             }
         });
