@@ -1,3 +1,4 @@
+
 name: THENUVA X MD - WasenderAPI Diagnostics
 
 on:
@@ -10,97 +11,12 @@ permissions:
   contents: read
 
 jobs:
-  test-wasender:
-    name: Diagnose WhatsApp Message
+  trigger-check:
+    name: Verify Workflow Trigger
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-
     steps:
-      - name: Send and Inspect API Response
-        uses: actions/github-script@v7
-        env:
-          WASENDER_API_KEY: ${{ secrets.WASENDER_API_KEY }}
-          TEST_PHONE: ${{ secrets.TEST_PHONE }}
-        with:
-          script: |
-            const token = process.env.WASENDER_API_KEY;
-            const phone = process.env.TEST_PHONE;
-
-            if (!token || !phone) {
-              core.setFailed(
-                'Missing WASENDER_API_KEY or TEST_PHONE secret.'
-              );
-              return;
-            }
-
-            // E.164 format, e.g. +947XXXXXXXX
-            if (!/^\+[1-9]\d{7,14}$/.test(phone)) {
-              core.setFailed(
-                'TEST_PHONE must use international format, e.g. +947XXXXXXXX.'
-              );
-              return;
-            }
-
-            try {
-              const response = await fetch(
-                'https://www.wasenderapi.com/api/send-message',
-                {
-                  method: 'POST',
-                  headers: {
-                    Authorization: `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                    Accept: 'application/json'
-                  },
-                  body: JSON.stringify({
-                    to: phone,
-                    text: 'THENUVA X MD - WasenderAPI diagnostic test.'
-                  }),
-                  signal: AbortSignal.timeout(30000)
-                }
-              );
-
-              const raw = await response.text();
-
-              console.log('HTTP status:', response.status);
-
-              let result;
-              try {
-                result = JSON.parse(raw);
-              } catch {
-                console.log('Non-JSON API response:', raw.slice(0, 1500));
-                core.setFailed('WasenderAPI returned a non-JSON response.');
-                return;
-              }
-
-              // Do not print the token.
-              console.log(
-                'API response:',
-                JSON.stringify(result, null, 2)
-              );
-
-              if (!response.ok || result.success === false) {
-                core.setFailed(
-                  `WasenderAPI rejected the request (HTTP ${response.status}).`
-                );
-                return;
-              }
-
-              const data = result.data || {};
-
-              console.log('Message ID:', data.msgId ?? 'Not provided');
-              console.log('Recipient JID:', data.jid ?? 'Not provided');
-              console.log('Message status:', data.status ?? 'Not provided');
-
-              if (data.status === 'in_progress') {
-                console.log(
-                  'API accepted the message. Check WasenderAPI message logs for delivery status.'
-                );
-              } else {
-                console.log(
-                  'Request accepted. Confirm final delivery in WasenderAPI message logs.'
-                );
-              }
-
-            } catch (error) {
-              core.setFailed(`Request error: ${error.message}`);
-            }
+      - name: Confirm Workflow Started
+        run: |
+          echo "THENUVA X MD workflow started successfully."
+          echo "Event: $GITHUB_EVENT_NAME"
+          echo "Branch: $GITHUB_REF_NAME"
