@@ -170,7 +170,15 @@ async function connectToWA() {
 
         const statusCode = lastDisconnect?.error?.output?.statusCode;
 
-        console.log('⚠️ WhatsApp connection closed:', statusCode || 'unknown');
+        console.error(
+  '⚠️ WhatsApp connection closed:',
+  statusCode || 'unknown',
+  lastDisconnect?.error?.message || 'No error message'
+);
+
+console.error(
+  lastDisconnect?.error?.stack || 'No stack trace available'
+);
 
         if (statusCode === DisconnectReason.loggedOut) {
           console.error(
