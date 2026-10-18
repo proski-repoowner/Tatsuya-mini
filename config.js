@@ -13,7 +13,7 @@ function convertToBool(text, fault = 'true') {
 
 module.exports = {
     SESSION_ID: String(
-        process.env.SESSION_ID || ''
+        process.env.SESSION_ID || 'THENUVA-XMD=https://mega.nz/file/9v4RVJbD#Xqxn0rAP008PGc_lGC3lbSMYfftWzMfAFA8BFVAwuqw'
     ).trim(),
 
     BOT_OWNER: String(
