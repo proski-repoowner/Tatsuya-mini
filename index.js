@@ -16,11 +16,7 @@ const qrcode = require('qrcode-terminal');
 
 const config = require('./config');
 const { sms } = require('./lib/msg');
-
-const {
-    getGroupAdmins
-} = require('./lib/functions');
-
+const { getGroupAdmins } = require('./lib/functions');
 const { File } = require('megajs');
 const { commands, replyHandlers } = require('./command');
 
@@ -33,11 +29,12 @@ const ownerNumber = ['94742876482'];
 const authDir = path.join(__dirname, 'auth_info_baileys');
 const credsPath = path.join(authDir, 'creds.json');
 
-let danuwa;
+let danuwa = null;
 let isConnecting = false;
 let reconnectTimer = null;
 let reconnectAttempts = 0;
 let pluginsLoaded = false;
+let connectionStopped = false;
 
 // ========================================
 // EXPRESS SERVER
@@ -56,7 +53,9 @@ app.get('/api/status', (req, res) => {
 });
 
 app.listen(port, () => {
-    console.log(`🌐 THENUVA X MD server listening on port ${port}`);
+    console.log(
+        `🌐 THENUVA X MD server listening on port ${port}`
+    );
 });
 
 // ========================================
@@ -70,13 +69,15 @@ async function ensureSessionFile() {
         fs.mkdirSync(authDir, { recursive: true });
 
         if (!fs.existsSync(credsPath)) {
-            let sessionUrl = String(config.SESSION_ID || '')
+            const sessionUrl = String(config.SESSION_ID || '')
                 .trim()
                 .replace(/^THENUVA-XMD=/i, '')
                 .trim();
 
             if (
-                !/^https:\/\/mega\.nz\/file\/[^#]+#[^#]+$/i.test(sessionUrl)
+                !/^https:\/\/mega\.nz\/file\/[^#]+#[^#]+$/i.test(
+                    sessionUrl
+                )
             ) {
                 throw new Error(
                     'Invalid SESSION_ID. Set the complete MEGA URL including its # key.'
@@ -101,7 +102,7 @@ async function ensureSessionFile() {
                 );
             } catch {
                 throw new Error(
-                    'Downloaded file is not valid JSON.'
+                    'Downloaded session file is not valid JSON.'
                 );
             }
 
@@ -115,21 +116,53 @@ async function ensureSessionFile() {
 
             fs.renameSync(tempPath, credsPath);
 
-            console.log('✅ Session credentials downloaded successfully.');
+            console.log(
+                '✅ Session credentials downloaded successfully.'
+            );
         } else {
             console.log('✅ Existing creds.json found.');
         }
 
         await connectToWA();
-
     } catch (error) {
         if (fs.existsSync(tempPath)) {
             fs.unlinkSync(tempPath);
         }
 
-        console.error('❌ SESSION RESTORE ERROR:', error.message);
+        console.error(
+            '❌ SESSION RESTORE ERROR:',
+            error.message
+        );
         console.error(error.stack || 'No stack trace available');
     }
+}
+
+// ========================================
+// SAFE RECONNECT
+// ========================================
+
+function scheduleReconnect() {
+    if (connectionStopped || reconnectTimer) return;
+
+    reconnectAttempts++;
+
+    const delay = Math.min(
+        5000 * (2 ** (reconnectAttempts - 1)),
+        60000
+    );
+
+    console.log(
+        `🔄 Reconnecting in ${Math.ceil(delay / 1000)} seconds...`
+    );
+
+    reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+
+        connectToWA().catch((error) => {
+            isConnecting = false;
+            console.error('❌ RECONNECT ERROR:', error.message);
+        });
+    }, delay);
 }
 
 // ========================================
@@ -137,7 +170,7 @@ async function ensureSessionFile() {
 // ========================================
 
 async function connectToWA() {
-    if (isConnecting) return;
+    if (isConnecting || connectionStopped) return;
 
     isConnecting = true;
 
@@ -150,7 +183,7 @@ async function connectToWA() {
         const { version } = await fetchLatestBaileysVersion();
 
         console.log(
-            `🔄 Connecting THENUVA X MD using Baileys ${version.join('.')}`
+            `🔄 Connecting THENUVA X MD using WhatsApp Web version ${version.join('.')}`
         );
 
         const socket = makeWASocket({
@@ -193,7 +226,9 @@ async function connectToWA() {
                     reconnectTimer = null;
                 }
 
-                console.log('✅ THENUVA X MD connected to WhatsApp!');
+                console.log(
+                    '✅ THENUVA X MD connected to WhatsApp!'
+                );
 
                 try {
                     await socket.sendMessage(
@@ -212,32 +247,48 @@ async function connectToWA() {
                     );
                 }
 
-                // Load plugins once
-                if (!pluginsLoaded) {
-                    pluginsLoaded = true;
+                // ========================================
+                // LOAD PLUGINS ONCE
+                // ========================================
 
-                    const pluginsDir = path.join(__dirname, 'plugins');
+                if (!pluginsLoaded) {
+                    const pluginsDir = path.join(
+                        __dirname,
+                        'plugins'
+                    );
 
                     if (fs.existsSync(pluginsDir)) {
-                        for (const plugin of fs.readdirSync(pluginsDir)) {
+                        for (
+                            const plugin of fs.readdirSync(pluginsDir)
+                        ) {
                             if (
-                                path.extname(plugin).toLowerCase() !== '.js'
+                                path.extname(plugin).toLowerCase() !==
+                                '.js'
                             ) {
                                 continue;
                             }
 
                             try {
-                                require(path.join(pluginsDir, plugin));
-                                console.log(`🔌 Plugin loaded: ${plugin}`);
+                                require(
+                                    path.join(pluginsDir, plugin)
+                                );
+
+                                console.log(
+                                    `🔌 Plugin loaded: ${plugin}`
+                                );
                             } catch (error) {
                                 console.error(
                                     `❌ Plugin error (${plugin}):`,
-                                    error.message
+                                    error.stack || error.message
                                 );
                             }
                         }
+
+                        pluginsLoaded = true;
                     } else {
-                        console.warn('⚠️ plugins directory not found.');
+                        console.warn(
+                            '⚠️ plugins directory not found.'
+                        );
                     }
                 }
             }
@@ -248,43 +299,69 @@ async function connectToWA() {
                 const error = lastDisconnect?.error;
                 const statusCode = error?.output?.statusCode;
 
-                console.error('⚠️ WhatsApp connection closed:', {
-                    statusCode: statusCode || 'unknown',
-                    message: error?.message || 'No error message',
-                    payload: error?.output?.payload,
-                    stack: error?.stack || 'No stack trace available'
-                });
+                console.error(
+                    '⚠️ WhatsApp connection closed:',
+                    {
+                        statusCode: statusCode || 'unknown',
+                        message: error?.message || 'No error message',
+                        payload: error?.output?.payload
+                    }
+                );
 
-                if (statusCode === DisconnectReason.loggedOut) {
+                // Logged out: requires a valid new session
+                if (
+                    statusCode === DisconnectReason.loggedOut
+                ) {
+                    connectionStopped = true;
+
+                    if (reconnectTimer) {
+                        clearTimeout(reconnectTimer);
+                        reconnectTimer = null;
+                    }
+
                     console.error(
                         '❌ WhatsApp logged out. A fresh session is required.'
                     );
+
                     return;
                 }
 
-                reconnectAttempts++;
+                // ========================================
+                // FIX: CONNECTION REPLACED (440)
+                // ========================================
 
-                const delay = Math.min(
-                    5000 * (2 ** (reconnectAttempts - 1)),
-                    60000
-                );
+                if (
+                    statusCode ===
+                    DisconnectReason.connectionReplaced
+                ) {
+                    connectionStopped = true;
 
-                console.log(
-                    `🔄 Reconnecting in ${Math.ceil(delay / 1000)} seconds...`
-                );
+                    if (reconnectTimer) {
+                        clearTimeout(reconnectTimer);
+                        reconnectTimer = null;
+                    }
 
-                if (reconnectTimer) {
-                    clearTimeout(reconnectTimer);
+                    console.error(
+                        '❌ CONNECTION REPLACED (440).'
+                    );
+
+                    console.error(
+                        '⚠️ Automatic reconnect stopped to prevent a loop.'
+                    );
+
+                    console.error(
+                        '👉 Stop any other bot instance using this WhatsApp session.'
+                    );
+
+                    console.error(
+                        '👉 If no other instance is running, check the session and Baileys version.'
+                    );
+
+                    return;
                 }
 
-                reconnectTimer = setTimeout(() => {
-                    reconnectTimer = null;
-
-                    connectToWA().catch((err) => {
-                        isConnecting = false;
-                        console.error('❌ RECONNECT ERROR:', err.message);
-                    });
-                }, delay);
+                // Other connection failures: retry with backoff
+                scheduleReconnect();
             }
         });
 
@@ -292,230 +369,244 @@ async function connectToWA() {
         // INCOMING MESSAGES / COMMANDS
         // ========================================
 
-        socket.ev.on('messages.upsert', async ({ messages }) => {
-            for (const msg of messages) {
-                if (msg.messageStubType === 68) {
-                    try {
-                        await socket.sendMessageAck(msg.key);
-                    } catch (error) {
-                        console.error(
-                            '⚠️ Message acknowledgement error:',
-                            error.message
-                        );
-                    }
-                }
-            }
-
-            for (const mek of messages) {
-                if (!mek || !mek.message) continue;
-
-                if (
-                    getContentType(mek.message) === 'ephemeralMessage'
-                ) {
-                    mek.message =
-                        mek.message.ephemeralMessage.message;
-                }
-
-                const from = mek.key?.remoteJid;
-
-                if (!from || from === 'status@broadcast') continue;
-
-                let m;
-
-                try {
-                    m = sms(socket, mek);
-                } catch (error) {
-                    console.error('❌ MESSAGE PARSE ERROR:', error.message);
-                    continue;
-                }
-
-                const type = getContentType(mek.message);
-
-                const body =
-                    type === 'conversation'
-                        ? mek.message.conversation || ''
-                        : mek.message[type]?.text ||
-                          mek.message[type]?.caption ||
-                          '';
-
-                const isCmd = body.startsWith(prefix);
-
-                const commandName = isCmd
-                    ? body.slice(prefix.length).trim().split(/\s+/)[0].toLowerCase()
-                    : '';
-
-                const args = body.trim().split(/ +/).slice(1);
-                const q = args.join(' ');
-
-                const sender = mek.key.fromMe
-                    ? socket.user.id
-                    : (mek.key.participant || from);
-
-                const senderNumber = sender.split('@')[0].split(':')[0];
-
-                const isGroup = from.endsWith('@g.us');
-
-                const botNumber = socket.user.id
-                    .split(':')[0]
-                    .split('@')[0];
-
-                const pushname = mek.pushName || 'User';
-
-                const isMe = botNumber === senderNumber;
-
-                const isOwner =
-                    ownerNumber.includes(senderNumber) || isMe;
-
-                const botNumber2 =
-                    await jidNormalizedUser(socket.user.id);
-
-                const groupMetadata = isGroup
-                    ? await socket.groupMetadata(from).catch(() => null)
-                    : null;
-
-                const groupName =
-                    isGroup ? groupMetadata?.subject || '' : '';
-
-                const participants =
-                    isGroup ? groupMetadata?.participants || [] : [];
-
-                const groupAdmins = isGroup
-                    ? getGroupAdmins(participants)
-                    : [];
-
-                const isBotAdmins = isGroup
-                    ? groupAdmins.includes(botNumber2)
-                    : false;
-
-                const isAdmins = isGroup
-                    ? groupAdmins.includes(sender)
-                    : false;
-
-                const reply = (text) =>
-                    socket.sendMessage(
-                        from,
-                        { text },
-                        { quoted: mek }
-                    );
-
-                // ========================================
-                // COMMAND HANDLER
-                // ========================================
-
-                if (isCmd) {
-                    const cmd = commands.find(
-                        (c) =>
-                            c.pattern === commandName ||
-                            (c.alias && c.alias.includes(commandName))
-                    );
-
-                    if (cmd) {
-                        if (cmd.react) {
-                            socket.sendMessage(from, {
-                                react: {
-                                    text: cmd.react,
-                                    key: mek.key
-                                }
-                            }).catch(() => {});
-                        }
-
+        socket.ev.on(
+            'messages.upsert',
+            async ({ messages }) => {
+                for (const msg of messages) {
+                    if (msg.messageStubType === 68) {
                         try {
-                            await cmd.function(
-                                socket,
-                                mek,
-                                m,
-                                {
-                                    from,
-                                    quoted: mek,
-                                    body,
-                                    isCmd,
-                                    command: commandName,
-                                    args,
-                                    q,
-                                    isGroup,
-                                    sender,
-                                    senderNumber,
-                                    botNumber2,
-                                    botNumber,
-                                    pushname,
-                                    isMe,
-                                    isOwner,
-                                    groupMetadata,
-                                    groupName,
-                                    participants,
-                                    groupAdmins,
-                                    isBotAdmins,
-                                    isAdmins,
-                                    reply
-                                }
-                            );
+                            await socket.sendMessageAck(msg.key);
                         } catch (error) {
-                            console.error('[PLUGIN ERROR]', error);
+                            console.error(
+                                '⚠️ Message acknowledgement error:',
+                                error.message
+                            );
                         }
                     }
                 }
 
-                // ========================================
-                // REPLY HANDLERS
-                // ========================================
+                for (const mek of messages) {
+                    if (!mek || !mek.message) continue;
 
-                for (const handler of replyHandlers) {
+                    if (
+                        getContentType(mek.message) ===
+                        'ephemeralMessage'
+                    ) {
+                        mek.message =
+                            mek.message.ephemeralMessage.message;
+                    }
+
+                    const from = mek.key?.remoteJid;
+
+                    if (
+                        !from ||
+                        from === 'status@broadcast'
+                    ) {
+                        continue;
+                    }
+
+                    let m;
+
                     try {
-                        if (
-                            handler.filter(body, {
-                                sender,
-                                message: mek
-                            })
-                        ) {
-                            await handler.function(
-                                socket,
-                                mek,
-                                m,
-                                {
-                                    from,
-                                    quoted: mek,
-                                    body,
-                                    sender,
-                                    reply
-                                }
-                            );
-
-                            break;
-                        }
+                        m = sms(socket, mek);
                     } catch (error) {
                         console.error(
-                            '❌ Reply handler error:',
+                            '❌ MESSAGE PARSE ERROR:',
                             error.message
                         );
+                        continue;
+                    }
+
+                    const type = getContentType(mek.message);
+
+                    const body =
+                        type === 'conversation'
+                            ? mek.message.conversation || ''
+                            : mek.message[type]?.text ||
+                              mek.message[type]?.caption ||
+                              '';
+
+                    const isCmd = body.startsWith(prefix);
+
+                    const commandName = isCmd
+                        ? body
+                            .slice(prefix.length)
+                            .trim()
+                            .split(/\s+/)[0]
+                            .toLowerCase()
+                        : '';
+
+                    const args = body.trim().split(/ +/).slice(1);
+                    const q = args.join(' ');
+
+                    const sender = mek.key.fromMe
+                        ? socket.user.id
+                        : (
+                            mek.key.participant || from
+                        );
+
+                    const senderNumber = sender
+                        .split('@')[0]
+                        .split(':')[0];
+
+                    const isGroup = from.endsWith('@g.us');
+
+                    const botNumber = socket.user.id
+                        .split(':')[0]
+                        .split('@')[0];
+
+                    const pushname = mek.pushName || 'User';
+
+                    const isMe = botNumber === senderNumber;
+
+                    const isOwner =
+                        ownerNumber.includes(senderNumber) || isMe;
+
+                    const botNumber2 =
+                        await jidNormalizedUser(socket.user.id);
+
+                    const groupMetadata = isGroup
+                        ? await socket
+                            .groupMetadata(from)
+                            .catch(() => null)
+                        : null;
+
+                    const groupName = isGroup
+                        ? groupMetadata?.subject || ''
+                        : '';
+
+                    const participants = isGroup
+                        ? groupMetadata?.participants || []
+                        : [];
+
+                    const groupAdmins = isGroup
+                        ? getGroupAdmins(participants)
+                        : [];
+
+                    const isBotAdmins = isGroup
+                        ? groupAdmins.includes(botNumber2)
+                        : false;
+
+                    const isAdmins = isGroup
+                        ? groupAdmins.includes(sender)
+                        : false;
+
+                    const reply = (text) =>
+                        socket.sendMessage(
+                            from,
+                            { text },
+                            { quoted: mek }
+                        );
+
+                    // ========================================
+                    // COMMAND HANDLER
+                    // ========================================
+
+                    if (isCmd) {
+                        const cmd = commands.find(
+                            (c) =>
+                                c.pattern === commandName ||
+                                (
+                                    c.alias &&
+                                    c.alias.includes(commandName)
+                                )
+                        );
+
+                        if (cmd) {
+                            if (cmd.react) {
+                                socket.sendMessage(from, {
+                                    react: {
+                                        text: cmd.react,
+                                        key: mek.key
+                                    }
+                                }).catch(() => {});
+                            }
+
+                            try {
+                                await cmd.function(
+                                    socket,
+                                    mek,
+                                    m,
+                                    {
+                                        from,
+                                        quoted: mek,
+                                        body,
+                                        isCmd,
+                                        command: commandName,
+                                        args,
+                                        q,
+                                        isGroup,
+                                        sender,
+                                        senderNumber,
+                                        botNumber2,
+                                        botNumber,
+                                        pushname,
+                                        isMe,
+                                        isOwner,
+                                        groupMetadata,
+                                        groupName,
+                                        participants,
+                                        groupAdmins,
+                                        isBotAdmins,
+                                        isAdmins,
+                                        reply
+                                    }
+                                );
+                            } catch (error) {
+                                console.error(
+                                    '[PLUGIN ERROR]',
+                                    error.stack || error.message
+                                );
+                            }
+                        }
+                    }
+
+                    // ========================================
+                    // REPLY HANDLERS
+                    // ========================================
+
+                    for (const handler of replyHandlers) {
+                        try {
+                            if (
+                                handler.filter(body, {
+                                    sender,
+                                    message: mek
+                                })
+                            ) {
+                                await handler.function(
+                                    socket,
+                                    mek,
+                                    m,
+                                    {
+                                        from,
+                                        quoted: mek,
+                                        body,
+                                        sender,
+                                        reply
+                                    }
+                                );
+
+                                break;
+                            }
+                        } catch (error) {
+                            console.error(
+                                '❌ Reply handler error:',
+                                error.message
+                            );
+                        }
                     }
                 }
             }
-        });
-
+        );
     } catch (error) {
         isConnecting = false;
 
-        console.error('❌ WHATSAPP STARTUP ERROR:', error.message);
-        console.error(error.stack || 'No stack trace available');
-
-        reconnectAttempts++;
-
-        const delay = Math.min(
-            5000 * (2 ** (reconnectAttempts - 1)),
-            60000
+        console.error(
+            '❌ WHATSAPP STARTUP ERROR:',
+            error.stack || error.message
         );
 
-        if (reconnectTimer) {
-            clearTimeout(reconnectTimer);
-        }
-
-        reconnectTimer = setTimeout(() => {
-            reconnectTimer = null;
-
-            connectToWA().catch((err) => {
-                console.error('❌ RECONNECT ERROR:', err.message);
-            });
-        }, delay);
+        scheduleReconnect();
     }
 }
 
@@ -523,4 +614,9 @@ async function connectToWA() {
 // START BOT
 // ========================================
 
-ensureSessionFile();
+ensureSessionFile().catch((error) => {
+    console.error(
+        '❌ BOT START ERROR:',
+        error.stack || error.message
+    );
+});
