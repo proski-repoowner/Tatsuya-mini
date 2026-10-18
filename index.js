@@ -1,97 +1,82 @@
 const {
   default: makeWASocket,
-    useMultiFileAuthState,
-    DisconnectReason,
-    jidNormalizedUser,
-    isJidBroadcast,
-    getContentType,
-    proto,
-    generateWAMessageContent,
-    generateWAMessage,
-    AnyMessageContent,
-    prepareWAMessageMedia,
-    areJidsSameUser,
-    downloadContentFromMessage,
-    MessageRetryMap,
-    generateForwardMessageContent,
-    generateWAMessageFromContent,
-    generateMessageID, makeInMemoryStore,
-    jidDecode,
-    fetchLatestBaileysVersion,
-    Browsers
-  } = require('@whiskeysockets/baileys')
-  
-  
-  const l = console.log
-  const fs = require('fs')
-  const ff = require('fluent-ffmpeg')
-  const P = require('pino')
-  const config = require('./config')
-  const qrcode = require('qrcode-terminal')
-  const StickersTypes = require('wa-sticker-formatter')
-  const util = require('util')
-  const { getBuffer, getGroupAdmins, getRandom, h2k, isUrl, Json, runtime, sleep, fetchJson } = require('./lib/functions');
-  const FileType = require('file-type');
-  const axios = require('axios')
-  const { File } = require('megajs')
-  const { fromBuffer } = require('file-type')
-  const bodyparser = require('body-parser')
-  const os = require('os')
-  const Crypto = require('crypto')
-  const path = require('path')
-  const prefix = config.PREFIX
-  
-  const ownerNumber = ['94740534738']
-  
-  const tempDir = path.join(os.tmpdir(), 'cache-temp')
-  if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir)
-  }
-  
-  const clearTempDir = () => {
-      fs.readdir(tempDir, (err, files) => {
-          if (err) throw err;
-          for (const file of files) {
-              fs.unlink(path.join(tempDir, file), err => {
-                  if (err) throw err;
-              });
-          }
-      });
-  }
-  
-  // Clear the temp directory every 5 minutes
-  setInterval(clearTempDir, 5 * 60 * 1000);
-  
-  //===================SESSION-AUTH============================
-if (!fs.existsSync(__dirname + '/sessions/creds.json')) {
-if(!config.SESSION_ID) return console.log('Please add your session to SESSION_ID env !!')
-const sessdata = config.SESSION_ID.replace("THENUVA-XMD=", '');
-const filer = File.fromURL(`https://mega.nz/file/${sessdata}`)
-filer.download((err, data) => {
-if(err) throw err
-fs.writeFile(__dirname + '/sessions/creds.json', data, () => {
-console.log("Session downloaded ✅")
-})})}
+  useMultiFileAuthState,
+  DisconnectReason,
+  jidNormalizedUser,
+  getContentType,
+  fetchLatestBaileysVersion,
+  Browsers
+} = require('@whiskeysockets/baileys');
 
-const express = require("express");
+const fs = require('fs');
+const P = require('pino');
+const express = require('express');
+const axios = require('axios');
+const path = require('path');
+const qrcode = require('qrcode-terminal');
+
+const config = require('./config');
+const { sms, downloadMediaMessage } = require('./lib/msg');
+const {
+  getBuffer, getGroupAdmins, getRandom, h2k, isUrl, Json, runtime, sleep, fetchJson
+} = require('./lib/functions');
+const { File } = require('megajs');
+const { commands, replyHandlers } = require('./command');
+
 const app = express();
 const port = process.env.PORT || 8000;
-  
-  //=============================================
-  
-  async function connectToWA() {
-  console.log("Connecting to WhatsApp ⏳️...");
-  const { state, saveCreds } = await useMultiFileAuthState(__dirname + '/sessions/')
-  var { version } = await fetchLatestBaileysVersion()
-  
-  const conn = makeWASocket({
-          logger: P({ level: 'silent' }),
-          printQRInTerminal: false,
-          browser: Browsers.macOS("Firefox"),
-          syncFullHistory: true,
-          auth: state,
-          version
-          })
+
+const prefix = '.';
+const ownerNumber = ['94776121326'];
+const credsPath = path.join(__dirname, '/auth_info_baileys/creds.json');
+
+async function ensureSessionFile() {
+  if (!fs.existsSync(credsPath)) {
+    if (!config.SESSION_ID) {
+      console.error('❌ SESSION_ID env variable is missing. Cannot restore session.');
+      process.exit(1);
+    }
+
+    console.log("🔄 creds.json not found. Downloading session from MEGA...");
+
+    const sessdata = config.SESSION_ID;
+    const filer = File.fromURL(`https://mega.nz/file/${sessdata}`);
+
+    filer.download((err, data) => {
+      if (err) {
+        console.error("❌ Failed to download session file from MEGA:", err);
+        process.exit(1);
+      }
+
+      fs.mkdirSync(path.join(__dirname, '/auth_info_baileys/'), { recursive: true });
+      fs.writeFileSync(credsPath, data);
+      console.log("✅ Session downloaded and saved. Restarting bot...");
+      setTimeout(() => {
+        connectToWA();
+      }, 2000);
+    });
+  } else {
+    setTimeout(() => {
+      connectToWA();
+    }, 1000);
+  }
+}
+
+async function connectToWA() {
+  console.log("Connecting DANUWA-MD 🧬...");
+  const { state, saveCreds } = await useMultiFileAuthState(path.join(__dirname, '/auth_info_baileys/'));
+  const { version } = await fetchLatestBaileysVersion();
+
+  const danuwa = makeWASocket({
+    logger: P({ level: 'silent' }),
+    printQRInTerminal: false,
+    browser: Browsers.macOS("Firefox"),
+    auth: state,
+    version,
+    syncFullHistory: true,
+    markOnlineOnConnect: true,
+    generateHighQualityLinkPreview: true,
+  });
 
   danuwa.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect } = update;
